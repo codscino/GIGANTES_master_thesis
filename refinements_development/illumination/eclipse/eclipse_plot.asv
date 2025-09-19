@@ -1,0 +1,86 @@
+clc; clear all; close all;
+
+%% init
+date = [2025, 5, 10, 21, 46, ];
+T = date2mjd2000(date);
+
+kernels = {'sat441.bsp', 'naif0012.tls'};
+loadSpiceKernels(kernels);
+
+R_enc = 252.1; % Enceladus average radius in km 
+
+spiceParam.frame    = 'J2000';
+spiceParam.abcorr   = 'NONE';
+spiceParam.observer = '602';
+
+idCentral = 6;
+idMoon    = 1;
+
+%% create data table of constant time and a grid of lat,lon
+
+% Define the latitude and longitude vectors with a 0.1 degree(0.0017 rad) step
+lat_vector = (-2/3*pi/2:0.01:2/3*pi/2)';
+lon_vector = (pi:0.01:2*pi-pi/6)';
+
+% Create a grid of latitude and longitude coordinates
+[lat_grid, lon_grid] = meshgrid(lat_vector, lon_vector);
+
+% Flatten the grid matrices into column vectors
+lat_array = lat_grid(:);
+lon_array = lon_grid(:);
+
+% Create constant time array
+num_points = numel(lat_array);
+T_array = T * ones(num_points,1);
+
+dataTable = table(lat_array, lon_array, T_array, 'VariableNames', {'lat', 'lon', 'T'});
+
+lighting_status = calculate_lighting_conditions(dataTable, R_enc, spiceParam);
+
+dataTable.Lighting = lighting_status;
+
+%% plot
+plotTextureLatLong(idMoon, idCentral);
+hold on; 
+
+%%% Filter data for different lighting conditions and plot patches %%%
+
+% --- Plot Penumbra regions in red ---
+% Find indices for Penumbra condition
+penumbra_indices = find(dataTable.Lighting == "Penumbra");
+
+if ~isempty(penumbra_indices)
+    % Get the lat and lon for penumbra, and convert from radians to degrees
+    penumbra_lat_deg = rad2deg(dataTable.lat(penumbra_indices));
+    penumbra_lon_deg = rad2deg(dataTable.lon(penumbra_indices));
+    
+    % Plot the penumbra points as a red patch
+    % Note: Using patch on a large number of individual points can be slow.
+    % A more efficient way for a grid is to find the boundary of the region.
+    % However, for a direct visualization of grid points, this will work.
+    % For better performance with very dense grids, consider scatter plot first.
+    
+    % To create a boundary for the patch, we can use boundary() or convhull()
+    k_penumbra = boundary(penumbra_lon_deg, penumbra_lat_deg, 1); % The '1' is a shrink factor
+    patch(penumbra_lon_deg(k_penumbra), penumbra_lat_deg(k_penumbra), 'red', 'FaceAlpha', 0.4, 'EdgeColor', 'none');
+end
+
+
+% --- Plot Umbra regions in black ---
+% Find indices for Umbra condition
+umbra_indices = find(dataTable.Lighting == "Umbra");
+
+if ~isempty(umbra_indices)
+    % Get the lat and lon for umbra, and convert from radians to degrees
+    umbra_lat_deg = rad2deg(dataTable.lat(umbra_indices));
+    umbra_lon_deg = rad2deg(dataTable.lon(umbra_indices));
+
+    % Create a boundary for the patch
+    k_umbra = boundary(umbra_lon_deg, umbra_lat_deg, 1);
+    patch(umbra_lon_deg(k_umbra), umbra_lat_deg(k_umbra), 'black', 'FaceAlpha', 0.4, 'EdgeColor', 'none');
+end
+
+% Ensure the hold state is turned off after plotting
+hold off;
+
+

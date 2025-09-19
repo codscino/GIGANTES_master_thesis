@@ -1,0 +1,5 @@
+# Ignore all Binary Space Partition files
+*.bsp
+
+# Ignore all Texture Palette Container files
+*.tpc

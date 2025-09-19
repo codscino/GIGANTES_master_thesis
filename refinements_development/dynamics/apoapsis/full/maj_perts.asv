@@ -1,0 +1,101 @@
+clc;
+clear all;
+close all;
+
+%% ========================================================================
+%  1. DEFINE INPUTS AND SETUP
+%  ========================================================================
+
+% --- Flyby parameters ---
+pars.INPUTS.idCentral = 6;      % Saturn
+pars.INPUTS.idMoon    = 1;      % Enceladus flyby
+pars.INPUTS.V_inf     = 4.0;    % km/s
+pars.INPUTS.alpha     = 0.15;   % rad
+pars.INPUTS.k         = 0;
+
+% --- SPICE and Time parameters ---
+kernels = {'sat441.bsp', 'naif0012.tls', 'pck00010.tpc', 'de440.bsp'};
+loadSpiceKernels(kernels)
+spiceParam.frame    = 'J2000';
+spiceParam.abcorr   = 'NONE';
+spiceParam.observer = '699'; % Saturn NAIF ID
+
+
+%% ========================================================================
+%  3. COMBINED PERTURBATION ERROR VS. TIME (TITAN + J2)
+%  ========================================================================
+perturbers_titan_and_j2 = [606, -2];
+jd1 = date2mjd2000([2020 1 1 0 0 0]);
+jd2 = date2mjd2000([2050 1 1 0 0 0]);
+l = 100; % Number of time steps
+dates = linspace(jd1, jd2, l);
+
+err_vec = zeros(l, 1);
+
+for i = 1:l
+    [a_lc_temp, a_nbody_temp, ~] = lc_vs_nbody_sma2(pars, ...
+        spiceParam, dates(i), perturbers_titan_and_j2, 'backward');
+    err_vec(i) = a_lc_temp - a_nbody_temp;
+end
+
+% --- Plot the result ---
+figure('Name', 'Combined Perturbation Error');
+plot(dates, err_vec, 'r', 'LineWidth', 1.5);
+xlabel('Time [MJD2000]');
+ylabel('Error in sma (a_{lc} - a_{nbody}) [km]');
+title('SMA Discrepancy (Ideal vs. Titan+J2 Perturbed)');
+legend('Error', 'Location','best');
+grid on;
+
+
+%% ========================================================================
+%  4. INDIVIDUAL PERTURBATION ANALYSIS VS. TIME
+%  ========================================================================
+fprintf('--- Analyzing individual perturbation effects over time ---\n');
+
+% --- UPDATED: Define perturbers using their special IDs ---
+% J-terms use negative IDs, bodies use their NAIF IDs.
+perturbers_to_study = [-2, -3, -4, 606, 605, 10, 603, 604, 601, 607, 608];
+perturber_names     = {'J2', 'J3', 'J4', 'Titan', 'Rhea', 'Sun', ...
+                       'Tethys', 'Dione', 'Mimas', 'Hyperion', 'Iapetus'};
+
+lp = length(perturbers_to_study);
+all_errors = zeros(l, lp);
+
+% --- Outer loop: Iterate through each perturber to study it individually ---
+for p_idx = 1:lp
+    
+    current_perturber_id = perturbers_to_study(p_idx);
+    fprintf('  Analyzing effect of: %s\n', perturber_names{p_idx});
+    
+    % --- Inner loop: Iterate through the different epochs ---
+    for date_idx = 1:l
+        jd = dates(date_idx);
+        
+        % --- UPDATED: Simplified call to the new function ---
+        % We pass a single-element vector containing the ID of the
+        % perturber we want to study for this run.
+        [a_lc_ind, a_nbody_ind, ~] = lc_vs_nbody_sma2( ...
+            pars, spiceParam, jd, ...
+            current_perturber_id, ...  % e.g., [-2] or [606]
+            'backward');
+        
+        all_errors(date_idx, p_idx) = a_lc_ind - a_nbody_ind;
+    end
+end
+fprintf('Analysis complete.\n');
+
+%% --- Plot the results of the individual analysis ---
+figure('Name', 'Individual Perturbation Effects on SMA');
+hold on;
+for p_idx = 1:lp
+    plot(dates, all_errors(:, p_idx), 'LineWidth', 1.5, ...
+         'DisplayName', perturber_names{p_idx});
+end
+hold off;
+
+grid on;
+xlabel('Time [MJD2000]');
+ylabel('Change in sma (a_{lc} - a_{nbody}) [km]');
+title('Effect of Individual Perturbers on Post-Flyby SMA');
+legend('show', 'Location', 'bestoutside'); % 'bestoutside' can be cleaner

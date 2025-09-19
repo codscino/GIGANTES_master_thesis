@@ -1,0 +1,207 @@
+%% DEMO SCRIPT TO PLOT GROUNDTRACKS %%
+clear all; close all; clc;
+
+% This script should generate and help visualizing a full fly-by with a
+% given planet or moon. The idea is to generate both the ground track plot
+% and the b-plane trajectory plot.
+
+%% DEFINE PLANET, MOON PARAMETERS & CONSTANTS %%
+% Define Central Body & Moon of interest
+pars.INPUTS.idCentral  = 6; % (5 = Jupiter; 6 = Saturn; 7 = Uranus)
+pars.INPUTS.idMoon     = [1]; % (1 = Io; 2 = Europa; 3 = Ganymede; 4 = Callisto)
+                            % (1 = Enceladus; 2 = Thetys; 3 = Dione; 4 = Rhea; 5 = Titan)
+                            % (1 = Miranda; 2 = Ariel; 3 = Umbriel; 4 = Titania; 5 = Oberon)
+
+[pars.Planet.mu, pars.Planet.EquRad, pars.Planet.OrbRad, pars.Planet.hmin] = planetConstants(pars.INPUTS.idCentral); %[km3/s2],[km],[km] & [km]
+
+% Retrieve Desired Moon Parameters 
+if pars.INPUTS.idCentral == 3
+    pars.Moon.OrbRad = 384748; pars.Moon.mu  = getAstroConstants('Moon','mu'); %[km],[km3/s2]
+    pars.Moon.EquRad = getAstroConstants('Moon','Radius'); pars.Moon.hmin = 50;  %[km], [km]
+elseif pars.INPUTS.idCentral == 5
+    [pars.Moon.OrbRad, pars.Moon.mu, pars.Moon.EquRad, pars.Moon.hmin] = jupMoonsConstants(pars.INPUTS.idMoon); %[km],[km3/s2],[km] & [km]
+elseif pars.INPUTS.idCentral == 6
+    [pars.Moon.OrbRad, pars.Moon.mu, pars.Moon.EquRad, pars.Moon.hmin] = satMoonsConstants(pars.INPUTS.idMoon); %[km],[km3/s2],[km] & [km]
+else
+    [pars.Moon.OrbRad, pars.Moon.mu, pars.Moon.EquRad, pars.Moon.hmin] = uranusMoonsConstants(pars.INPUTS.idMoon); %[km],[km3/s2],[km] & [km]
+end
+
+for i = 1:size(pars.INPUTS.idMoon,2)
+    pars.Moon.Vel(i)    = sqrt(pars.Planet.mu/pars.Moon.OrbRad(i));           %[km/s] Moon Orbital velocity
+    pars.Moon.Period(i) = 2*pi*sqrt(pars.Moon.OrbRad(i)^3/pars.Planet.mu);    %[s] Moon orbital period
+    pars.Moon.HillSph(i) = pars.Moon.OrbRad(i)*( pars.Moon.mu(i)/(3*(pars.Moon.mu(i) + pars.Planet.mu)))^(1/3);     %[km] Moon Hill's Sphere
+end
+
+%% DEFINE FLYBY PARAMETERS & CONSTANTS %%
+% Define Flyby Hyperbolic Excess Velocities
+pars.INPUTS.V_inf = 4;     %[km/s] 
+
+vinfin = pars.INPUTS.V_inf;
+alfain = 0.15;
+kin = 0;
+kou = deg2rad(1);
+
+% Define parameters regarding the flyby
+pars.INPUTS.Flyby.min_h    = 25;   %[km] Minimum flyby altitude
+pars.GroundTr.npoints      = 30e3; % N° of time steps for ground-track propagation
+pars.GroundTr.t_prop       = 5;    %[minutes] Time of flyby hyperbola propagation 
+pars.INPUTS.Flyby.hMapping = 300;  %[km] Max altitude to consider mapping 
+
+% Determine maximum bending due to flyby
+rp_flyby  = pars.INPUTS.Flyby.min_h + pars.Moon.EquRad;           %[km
+e_fly     = 1 + ((rp_flyby*pars.INPUTS.V_inf^2)/pars.Moon.mu);    %[-] 
+delta_max = 2*asin(1/e_fly);                                      %[rad]
+pars.delta_max = delta_max;
+
+% Define starting epoch
+pars.INPUTS.epoch0 = 0;
+
+% Load sectirs for groundtrack plots
+load('sectorObj.mat');
+load('sectorObj_.mat');
+pars.sectorObj  = sectorObj;
+pars.sectorObj_ = sectorObj_;
+pars.rect       = defineRectangleMapping(); % --> save the rectangle mapping
+
+%% COMPUTE FLYBY CHARACTERISTICS %%
+% Define incoming & outgoing nodes
+nodein  = [vinfin, alfain, kin]; %[km/s, rad, rad]
+nodeout = [vinfin, alfain, kou];
+
+% Compute flyby parameters
+[Flyby] = Flyby_BuildUp(nodein, nodeout, pars);
+
+%% PLOT GROUDNTRACK %%
+colors = cool(length(Flyby));
+fig1 = figure( 'Color', [1 1 1] );
+hold on;
+plotTextureLatLong(pars.INPUTS.idMoon , pars.INPUTS.idCentral , 1);
+plotSquares(pars, 1);  
+axis normal;
+for i = 1:size(Flyby, 2)
+    Plot_Flyby_GT(Flyby(i), colors(i,:));
+end
+%% PLOT BPLANE DISPLAY OF FLYBY %%
+
+MaxDistance=2000; % Define Distance under which the trajectory will be ploted.
+
+States=Flyby.fly_States;
+Distance=sqrt(States(:,1).^2+States(:,2).^2+States(:,3).^2);
+
+indexDel=find(Distance>MaxDistance);
+States(indexDel,:)=[]; Distance(indexDel)=[]; % deleting states that are above the maximum distance.
+
+[~,indexBpoint]=min(Distance);
+Bpoint=States(indexBpoint,1:3);
+
+%--------------------------------------------------------------------------
+% Define The B Plane Components
+ T=States(1,4:6)/norm(States(1,4:6)); % Tangent Direction (i.e., perpendicular to the B Plane)
+ Z=[0 0 1];
+ N = crossFast(T,Z);
+%--------------------------------------------------------------------------
+% Draw Planet: Enceladus
+UnitDistance = pars.Moon.OrbRad; % Km, from takubo et al.  
+scale = 1;
+figure1 = figure('Color',[1 1 1]);
+% Create axes
+axes1 = axes('Parent',figure1,'ZColor',[1 1 1],'YColor',[1 1 1],...
+    'XColor',[1 1 1]);
+hold(axes1,'all');
+[hfig] = drawPlanet('Enceladus',[0 0 0],figure1,scale);
+axis equal
+view(0,90)
+%--------------------------------------------------------------------------
+% Draw the BPlane 
+% VInfinDir=Flyby.vvinfin/norm(Flyby.vvinfin); %relative direction of motion
+CMPos=[0 0 0];
+p1=MaxDistance*T;
+%    p2=[xEarth-0.3 0 0];
+line([ CMPos(1) p1(1)],[ CMPos(2) p1(2)],[ CMPos(3) p1(3)],'Color',[0 0 0])
+% Arrow head
+% scale factor
+H=gca;
+xr=get(H,'xlim');
+yr=get(H,'ylim');
+zr=get(H,'zlim');
+s=norm([xr(2)-xr(1),yr(2)-yr(1),zr(2)-zr(1)]);
+r=s/300; % radius
+h=6*r; % height
+n=20; m=20; % grid spacing
+[x,y,z]=cylinder(linspace(0,r,n),m);
+H=surf(x+p1(1),y+p1(2),z*h+p1(3));
+set(H,'FaceColor','k','EdgeColor','k')
+P=p1-CMPos; % position vector
+U=P/norm(P); % unit vector
+D=cross([0,0,1],-U); % rotation axis
+if norm(D)<eps, D=[1,0,0]; end
+A=acos(dot([0,0,1],-U)); % rotation angle
+rotate(H,D,A*180/pi,p1)
+%--------------------------------------------------------------------------
+CMPos=[0 0 0];
+p2=MaxDistance*Z;
+%    p2=[xEarth-0.3 0 0];
+line([ CMPos(1) p2(1)],[ CMPos(2) p2(2)],[ CMPos(3) p2(3)],'Color',[0 0 0])
+% Arrow head
+% scale factor
+H=gca;
+xr=get(H,'xlim');
+yr=get(H,'ylim');
+zr=get(H,'zlim');
+s=norm([xr(2)-xr(1),yr(2)-yr(1),zr(2)-zr(1)]);
+r=s/300; % radius
+h=6*r; % height
+n=20; m=20; % grid spacing
+[x,y,z]=cylinder(linspace(0,r,n),m);
+H=surf(x+p2(1),y+p2(2),z*h+p2(3));
+set(H,'FaceColor','k','EdgeColor','k')
+P=p2-CMPos; % position vector
+U=P/norm(P); % unit vector
+D=cross([0,0,1],-U); % rotation axis
+if norm(D)<eps, D=[1,0,0]; end
+A=acos(dot([0,0,1],-U)); % rotation angle
+rotate(H,D,A*180/pi,p2)
+%--------------------------------------------------------------------------
+CMPos=[0 0 0];
+p3=MaxDistance*N;
+%    p2=[xEarth-0.3 0 0];
+line([ CMPos(1) p3(1)],[ CMPos(2) p3(2)],[ CMPos(3) p3(3)],'Color',[0 0 0])
+% Arrow head
+% scale factor
+H=gca;
+xr=get(H,'xlim');
+yr=get(H,'ylim');
+zr=get(H,'zlim');
+s=norm([xr(2)-xr(1),yr(2)-yr(1),zr(2)-zr(1)]);
+r=s/300; % radius
+h=6*r; % height
+n=20; m=20; % grid spacing
+[x,y,z]=cylinder(linspace(0,r,n),m);
+H=surf(x+p3(1),y+p3(2),z*h+p3(3));
+set(H,'FaceColor','k','EdgeColor','k')
+P=p3-CMPos; % position vector
+U=P/norm(P); % unit vector
+D=cross([0,0,1],-U); % rotation axis
+if norm(D)<eps, D=[1,0,0]; end
+A=acos(dot([0,0,1],-U)); % rotation angle
+rotate(H,D,A*180/pi,p3)
+%---------------------------------------------------------------------------
+plot3(States(:,1), States(:,2), States(:,3))
+
+%% Notes
+
+% Draw the Trajectory plane  first
+XData1=[0 1 1 0];
+YData1=[0 0 1 1];
+ZData1=[0 0 0 0];
+% Create figure
+figure1 = figure;
+% Create axes
+axes1 = axes('Parent',figure1);
+% Create patch
+patch('Parent',axes1,'ZData',ZData1,'YData',YData1,'XData',XData1,...
+    'FaceAlpha',0.1,...
+    'LineWidth',2,...
+    'FaceColor',[1 0 0]);
+view(axes1,[-37.5 30]);
+

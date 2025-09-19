@@ -1,0 +1,243 @@
+function animated_eclipse()
+% =========================================================================
+% SCRIPT: Animate Lighting with Parallel Pre-computation and GUI Controls
+%         (Using a Scatter Plot Approach - Revised and Fixed)
+% =========================================================================
+
+clc; clear all; close all;
+
+use_parallel = true;
+
+%% 1. Initialization and Setup
+disp('Initializing parameters and loading SPICE kernels...');
+
+kernels = {'sat441.bsp', 'naif0012.tls'}; 
+loadSpiceKernels(kernels);
+
+R_enc = 252.1;
+idCentral = 6;
+idMoon = 602;
+
+spiceParam.frame = 'J2000';
+spiceParam.abcorr = 'NONE';
+spiceParam.observer = '602';
+
+%% 2. Define Time Range and Surface Grid
+start_date = [2025, 5, 10, 21, 46, 30];
+end_date = [2025, 5, 10, 21, 47, 40];
+T_start = date2mjd2000(start_date);
+T_end = date2mjd2000(end_date);
+seconds_in_a_day = 86400;
+T_step = 1 / seconds_in_a_day;
+time_vector_mjd = T_start:T_step:T_end;
+num_time_steps = length(time_vector_mjd);
+fprintf('Time range defined for %d steps.\n', num_time_steps);
+
+grid_step_deg = 2;
+grid_step_rad = deg2rad(grid_step_deg);
+lat_vector = (-pi/2:grid_step_rad:pi/2)';
+lon_vector1 = (0:grid_step_rad:pi/2)';
+lon_vector2 = (3/2*pi:grid_step_rad:2*pi)';
+lon_vector = [lon_vector1;lon_vector2];
+[lat_grid, lon_grid] = meshgrid(lat_vector, lon_vector);
+lat_array = lat_grid(:);
+lon_array = lon_grid(:);
+num_points = numel(lat_array);
+
+%% 3. Setup Figure and Axes for Pre-computation
+disp('Setting up the main figure...');
+
+fig = figure('Name', 'Enceladus Lighting Animation (Scatter)', 'Position', [100, 100, 900, 750], 'Visible', 'off');
+ax = axes('Parent', fig, 'Position', [0.1, 0.25, 0.8, 0.65]);
+plotTextureLatLong_revised('Enceladus', ax);
+hold(ax, 'on');
+
+% --- FIX #1: Lock the axis limits to the map boundaries ---
+ylim(ax, [-90 90]);
+xlim(ax, [0 360]);
+% -----------------------------------------------------------
+
+title(ax, 'Loading... Please wait for pre-computation to finish.');
+
+% --- Start Parallel Pool and Initialize Workers ---
+if use_parallel
+    if license('test', 'Distrib_Computing_Toolbox') && ~isempty(ver('parallel'))
+        disp('Starting parallel pool...');
+        pool = gcp('nocreate');
+        if isempty(pool)
+            parpool();
+        end
+        disp('Parallel pool started successfully.');
+
+        spmd
+            loadSpiceKernels(kernels);
+        end
+        disp('Kernels loaded on all parallel workers.');
+        
+    else
+        disp('Parallel Computing Toolbox not found. Running in serial mode.');
+        use_parallel = false;
+    end
+end
+
+%% 4. Pre-compute and Pre-render All Plot Objects
+disp('Pre-calculating and rendering all frames using scatter approach...');
+plot_handles_all_steps = cell(1, num_time_steps);
+progress_bar = waitbar(0, 'Pre-rendering all animation frames...');
+
+for i = 1:num_time_steps
+    T = time_vector_mjd(i);
+    T_array = T * ones(num_points, 1);
+    dataTable = table(lat_array, lon_array, T_array, 'VariableNames', {'lat', 'lon', 'T'});
+    
+    lighting_status = calculate_lighting_conditions(dataTable, R_enc, spiceParam, use_parallel);
+    
+    dataTable.Lighting = lighting_status;
+
+    frame_handles = createBoundaryPatchesScatter(dataTable, ax, grid_step_deg);
+    
+    plot_handles_all_steps{i} = frame_handles;
+    waitbar(i / num_time_steps, progress_bar);
+end
+close(progress_bar);
+hold(ax, 'off');
+disp('All frames have been rendered.');
+
+
+%% 5. Create GUI Controls (Unchanged)
+time_label = uicontrol('Parent', fig, 'Style', 'text',...
+    'String', datestr(mjd20002datenum(time_vector_mjd(1))),...
+    'Position', [350, 90, 200, 25],...
+    'FontSize', 14);
+
+slider = uicontrol('Parent', fig, 'Style', 'slider',...
+    'Min', 1, 'Max', num_time_steps, 'Value', 1,...
+    'Position', [100, 60, 700, 20],...
+    'SliderStep', [1/(num_time_steps-1), 10/(num_time_steps-1)], ...
+    'Callback', @slider_callback);
+
+play_button = uicontrol('Parent', fig, 'Style', 'pushbutton',...
+    'String', 'Play',...
+    'Position', [400, 10, 100, 40],...
+    'FontSize', 12,...
+    'Callback', @play_pause_callback);
+play_button.UserData = struct('is_playing', false);
+
+%% 6. Final Setup and Callback Definitions
+current_index = 1;
+previous_index = -1;
+
+updatePlot(1); 
+set(fig, 'Visible', 'on');
+title(ax, 'Enceladus Lighting Conditions');
+disp('Animation is ready.');
+
+% --- Callback Functions ---
+function slider_callback(source, ~)
+    new_index = round(source.Value);
+    updatePlot(new_index);
+end
+
+function play_pause_callback(source, ~)
+    state = source.UserData;
+    state.is_playing = ~state.is_playing;
+    source.UserData = state;
+    
+    if state.is_playing
+        source.String = 'Pause';
+        runAnimation();
+    else
+        source.String = 'Play';
+    end
+end
+
+function runAnimation()
+    while play_button.UserData.is_playing && isvalid(play_button)
+        current_index = current_index + 1;
+        if current_index > num_time_steps
+            current_index = 1;
+        end
+        updatePlot(current_index);
+        slider.Value = current_index;
+        pause(0.05);
+        drawnow;
+    end
+    if isvalid(play_button)
+       play_button.UserData.is_playing = false;
+       play_button.String = 'Play';
+    end
+end
+
+function updatePlot(new_index)
+    if new_index == previous_index
+        return;
+    end
+    
+    if previous_index > 0 && previous_index <= num_time_steps
+        handles_to_hide = plot_handles_all_steps{previous_index};
+        if isfield(handles_to_hide, 'penumbra') && ~isempty(handles_to_hide.penumbra) && isvalid(handles_to_hide.penumbra)
+            set(handles_to_hide.penumbra, 'Visible', 'off');
+        end
+        if isfield(handles_to_hide, 'umbra') && ~isempty(handles_to_hide.umbra) && isvalid(handles_to_hide.umbra)
+            set(handles_to_hide.umbra, 'Visible', 'off');
+        end
+    end
+    
+    handles_to_show = plot_handles_all_steps{new_index};
+    if isfield(handles_to_show, 'penumbra') && ~isempty(handles_to_show.penumbra) && isvalid(handles_to_show.penumbra)
+        set(handles_to_show.penumbra, 'Visible', 'on');
+    end
+    if isfield(handles_to_show, 'umbra') && ~isempty(handles_to_show.umbra) && isvalid(handles_to_show.umbra)
+        set(handles_to_show.umbra, 'Visible', 'on');
+    end
+    
+    current_datenum = mjd20002datenum(time_vector_mjd(new_index));
+    set(time_label, 'String', datestr(current_datenum, 'yyyy-mm-dd HH:MM:SS'));
+    
+    current_index = new_index;
+    previous_index = new_index;
+end
+
+
+%% Helper functions
+function dn = mjd20002datenum(mjd)
+    dn = mjd + datenum('2000-01-01 12:00:00');
+end
+
+function frame_handles = createBoundaryPatchesScatter(dataTable, ax, step_deg)
+    frame_handles = struct('penumbra', [], 'umbra', []);
+    
+    lat_deg = rad2deg(dataTable.lat);
+    lon_deg = rad2deg(dataTable.lon);
+    
+    % --- FIX #2: Better marker size calculation ---
+    % Scatter marker size is in points^2. We want the marker side to be
+    % roughly equal to the grid step size in degrees. This requires tuning.
+    % A factor of ~10-15 often works well depending on figure DPI.
+    marker_size = (step_deg * 12)^2;
+    % --------------------------------------------------
+    
+    valid_indices = (lon_deg <= 90) | (lon_deg >= 270);
+    
+    penumbra_indices = find(strcmp(dataTable.Lighting, 'Penumbra') & valid_indices);
+    if ~isempty(penumbra_indices)
+        % --- FIX #2: Use square markers ('s') for better tiling ---
+        h = scatter(ax, lon_deg(penumbra_indices), lat_deg(penumbra_indices), ...
+                   marker_size, [0.7 0.7 0.7], 'filled', 's', ... 
+                   'MarkerFaceAlpha', 0.1, 'MarkerEdgeColor', 'none', ...
+                   'Visible', 'off');
+        frame_handles.penumbra = h;
+    end
+    
+    umbra_indices = find(strcmp(dataTable.Lighting, 'Umbra') & valid_indices);
+    if ~isempty(umbra_indices)
+        % --- FIX #2: Use square markers ('s') for better tiling ---
+        h = scatter(ax, lon_deg(umbra_indices), lat_deg(umbra_indices), ...
+                   marker_size, 'black', 'filled', 's', ...
+                   'MarkerFaceAlpha', 0.7, 'MarkerEdgeColor', 'none', ...
+                   'Visible', 'off');
+        frame_handles.umbra = h;
+    end
+end
+
+end
