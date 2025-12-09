@@ -82,6 +82,6 @@ It provides:
 </div>
 
 <div align="center">
-  <img src="[pics/animation.gif](https://github.com/user-attachments/assets/2184db14-ec5c-4b90-aec2-5921ffe67305)" width="100%" alt="Porkchop Plot2" />
+  <img src="https://github.com/user-attachments/assets/2184db14-ec5c-4b90-aec2-5921ffe67305" width="100%" alt="Porkchop Plot2" />
   <p><em>STM B-Plane optmization for different values of backward true anomaly</em></p>
 </div>
