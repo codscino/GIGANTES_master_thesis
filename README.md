@@ -4,9 +4,9 @@
 
 ## 📌 Abstract
 
-This repository contains the MATLAB software developed for the Master's Thesis **["High-Fidelity Illumination Modelling and N-Body Trajectory Optimisation for Enceladus Surface Groundtrack Design"](LINK_TO_PDF_HERE)**, conducted within the framework of the **European Space Agency’s (ESA) GIGANTES project** under the supervision of Prof. J.P. Sanchez-Cuartielles at ISAE SUPAERO.
+This repository contains the MATLAB software developed for the Master's Thesis **["High-Fidelity Illumination Modelling and N-Body Trajectory Optimisation for Enceladus Surface Groundtrack Design"](pics/thesis.pdf)**, conducted within the framework of the **European Space Agency's (ESA) GIGANTES project** under the supervision of Prof. J.P. Sanchez-Cuartielles at ISAE SUPAERO.
 
-This codebase contributes to the broader [GIGANTES repository](LINK_TO_MAIN_REPO_HERE). The specific algorithms and tools developed for this thesis are located within the `refinements_development` directory.
+This work extends the [GIGANTES repository](https://github.com/MacPau/GIGANTES-Repo) (see the README for a detailed description of the project aims and features). The thesis-specific algorithms and tools are located in the `refinements_development` directory.
 
 ### Context
 Preliminary interplanetary mission design often relies on the linked-conics model, a computationally efficient but simplified approximation. However, this model faces significant limitations when transitioning to high-fidelity analysis, particularly for complex tours of Saturn's moons.
@@ -52,7 +52,7 @@ This module computes and visualizes single flyby deltaV corrections on Enceladus
   <p><em>STM algorithm converging to the desired B-PLANE tartgeted flyby geometry</em></p>
 </div>
 
-In particular running the (link to true_anomaly_parfor.m) given:
+In particular running the [`true_anomaly_parfor.m`](./refinements_development/ultimo_tentativo/true%20anomaly/true_anomaly_parfor.m) script given:
 - a flyby geometry:
     - nodein = [pump_angle_in, crank_angle_in, v_infinity_in]
     - nodeout = [pump_angle_out, crank_angle_out, v_infinity_out]
@@ -67,21 +67,26 @@ The scripts loops the STM B-PLANE flyby optimization algorithm trough different 
 </div>
 
 
-To visualize better a single value of true anomaly the script pippo.m is nice.
-
-It provides:
+To visualize better a single value of true anomaly it is also possible to:
 
 <div align="center">
   <img src="pics/170deg_gtrack.png" width="100%" alt="Porkchop Plot2" />
-  <p><em>STM B-Plane optmization for different values of backward true anomaly</em></p>
+  <p><em>1. Visualize a comparison of the groundtracks</em></p>
 </div>
 
 <div align="center">
   <img src="pics/170_deg_altitude.png" width="100%" alt="Porkchop Plot2" />
-  <p><em>STM B-Plane optmization for different values of backward true anomaly</em></p>
+  <p><em>2. Visualize a comparison of the altitude profiles(function of time) with the pericentres hilighted</em></p>
 </div>
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/2184db14-ec5c-4b90-aec2-5921ffe67305" width="100%" alt="Porkchop Plot2" />
-  <p><em>STM B-Plane optmization for different values of backward true anomaly</em></p>
+  <img src="pics/short_gif.gif" width="100%" alt="STM B-Plane Optimization Animation" />
+  <p><em>3. Run an interactive visualization of the flyby with the original and corrected trajectories</em></p>
 </div>
+
+
+## ⚠️ Installation Requirements
+This software requires [MICE (MATLAB Interface for CSPICE)](https://naif.jpl.nasa.gov/naif/toolkit_MATLAB.html), the MATLAB version of NASA's SPICE toolkit, to be installed and correctly added to the MATLAB path.
+
+> **Note for Apple Silicon (M series) users:**  
+> Installation on newer Mac chips is more complex. It is recommended to follow this [detailed installation guide](https://gist.github.com/dsavransky/fcccae8fef7c226a63b39093c9ea6772).

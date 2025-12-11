@@ -50,7 +50,7 @@ nodeout = [4, deg2rad(8.6918), deg2rad(-88.1610)];
 % True anomaly sweep parameters
 anomaly_start = 15;
 anomaly_end = 255;
-anomaly_step = 5; 
+anomaly_step = 25; 
 anomaly_array = anomaly_start:anomaly_step:anomaly_end;
 num_anomalies = length(anomaly_array);
 
